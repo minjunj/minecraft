@@ -10,8 +10,7 @@
 		in {
 			devShell = pkgs.mkShell {
 				buildInputs = [
-					pkgs.nodejs_20
-					pkgs.nodePackages.mineflayer
+					pkgs.nodejs_22
 				];
 				shellHook = ''
 					echo "Welcome to the Mineflayer bot dev shell!"

@@ -1,0 +1,14 @@
+{
+  "name": "mineflayer-bot",
+  "version": "1.0.0",
+  "description": "Mineflayer bot",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "mineflayer": "^4.34.0"
+  },
+  "author": "",
+  "license": "ISC"
+}
