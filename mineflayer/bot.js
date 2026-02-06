@@ -1,6 +1,6 @@
 const mineflayer = require('mineflayer')
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder')
-const { GoalBlock } = goals
+const { GoalBlock, GoalNear } = goals
 
 const bot = mineflayer.createBot({
   host: '0.0.0.0',
@@ -13,6 +13,12 @@ const bot = mineflayer.createBot({
 bot.loadPlugin(pathfinder)
 
 let isMining = false
+const failedBlocks = new Set()
+
+// Clear failed blocks every 30 seconds to retry them later
+setInterval(() => {
+  failedBlocks.clear()
+}, 30000)
 
 // Auto-mining function
 async function autoMine() {
@@ -23,6 +29,11 @@ async function autoMine() {
     // Find nearest valuable block (stone, coal, iron, etc.)
     const blockToMine = bot.findBlock({
       matching: (block) => {
+        if (!block || !block.position) return false
+
+        const blockKey = `${block.position.x},${block.position.y},${block.position.z}`
+        if (failedBlocks.has(blockKey)) return false
+
         return block.name === 'stone' ||
                block.name === 'coal_ore' ||
                block.name === 'iron_ore' ||
@@ -33,39 +44,70 @@ async function autoMine() {
     })
 
     if (blockToMine) {
+      const blockKey = `${blockToMine.position.x},${blockToMine.position.y},${blockToMine.position.z}`
       console.log(`Found ${blockToMine.name} at ${blockToMine.position}`)
 
-      // Move to the block
+      // Move to the block with timeout
       const defaultMove = new Movements(bot)
       bot.pathfinder.setMovements(defaultMove)
+      bot.pathfinder.setGoal(new GoalNear(blockToMine.position.x, blockToMine.position.y, blockToMine.position.z, 1))
 
-      const goal = new GoalBlock(blockToMine.position.x, blockToMine.position.y, blockToMine.position.z)
-      await bot.pathfinder.goto(goal)
+      // Wait for pathfinding with timeout
+      await Promise.race([
+        bot.pathfinder.goto(new GoalNear(blockToMine.position.x, blockToMine.position.y, blockToMine.position.z, 1)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Pathfinding timeout')), 5000))
+      ])
 
-      // Mine the block
-      console.log(`Mining ${blockToMine.name}...`)
-      await bot.dig(blockToMine)
-      console.log(`Successfully mined ${blockToMine.name}!`)
+      // Mine the block if we're close enough
+      if (bot.entity.position.distanceTo(blockToMine.position) <= 5) {
+        console.log(`Mining ${blockToMine.name}...`)
+        await bot.dig(blockToMine)
+        console.log(`Successfully mined ${blockToMine.name}!`)
+      } else {
+        console.log(`Too far from block, marking as failed`)
+        failedBlocks.add(blockKey)
+      }
 
       // Wait a bit before next mining
-      setTimeout(autoMine, 1000)
+      setTimeout(autoMine, 500)
     } else {
       console.log('No blocks found nearby, exploring...')
       // Move randomly to explore
-      const x = bot.entity.position.x + (Math.random() - 0.5) * 20
-      const z = bot.entity.position.z + (Math.random() - 0.5) * 20
-      const y = bot.entity.position.y
+      if (bot.entity && bot.entity.position) {
+        const x = bot.entity.position.x + (Math.random() - 0.5) * 30
+        const z = bot.entity.position.z + (Math.random() - 0.5) * 30
+        const y = bot.entity.position.y
 
-      const defaultMove = new Movements(bot)
-      bot.pathfinder.setMovements(defaultMove)
-      const goal = new GoalBlock(Math.floor(x), Math.floor(y), Math.floor(z))
+        const defaultMove = new Movements(bot)
+        bot.pathfinder.setMovements(defaultMove)
 
-      await bot.pathfinder.goto(goal)
-      setTimeout(autoMine, 2000)
+        try {
+          await Promise.race([
+            bot.pathfinder.goto(new GoalNear(Math.floor(x), Math.floor(y), Math.floor(z), 2)),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Exploration timeout')), 5000))
+          ])
+        } catch (exploreErr) {
+          console.log('Exploration failed, trying different direction...')
+        }
+      }
+
+      setTimeout(autoMine, 1000)
     }
   } catch (err) {
     console.log('Error during mining:', err.message)
-    setTimeout(autoMine, 3000)
+
+    // Try to explore when stuck
+    if (bot.entity && bot.entity.position) {
+      try {
+        const x = bot.entity.position.x + (Math.random() - 0.5) * 20
+        const z = bot.entity.position.z + (Math.random() - 0.5) * 20
+        bot.pathfinder.setGoal(new GoalNear(Math.floor(x), Math.floor(bot.entity.position.y), Math.floor(z), 2))
+      } catch (moveErr) {
+        console.log('Failed to set new goal')
+      }
+    }
+
+    setTimeout(autoMine, 2000)
   } finally {
     isMining = false
   }
