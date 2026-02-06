@@ -10,7 +10,7 @@ services:
     environment:
       EULA: "TRUE"
       ONLINE_MODE: "false"
-      VERSION: "1.21.8"
+      VERSION: "1.21.9"
       MEMORY: "6144M"
       TZ: "Asia/Tokyo"
     volumes:
