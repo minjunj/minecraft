@@ -6,7 +6,8 @@ const bot = mineflayer.createBot({
   host: '0.0.0.0',
   port: 25565,
   username: 'MyBot',
-  version: '1.21.9'
+  version: '1.21.9',
+  auth: 'offline'
 })
 
 // Load pathfinder plugin for movement
